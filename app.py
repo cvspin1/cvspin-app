@@ -34,6 +34,24 @@ st.subheader("Generador Profesional de CV para el Mercado Español")
 # Fetch API Key securely from Secrets
 api_key = st.secrets.get("GEMINI_API_KEY")
 
+def generate_with_fallback(client, contents):
+    # Try models in order of stability and performance
+    models_to_try = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']
+    last_exception = None
+    
+    for model_name in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=contents
+            )
+            return response
+        except Exception as e:
+            last_exception = e
+            continue
+            
+    raise last_exception
+
 # Mode Selection
 option = st.radio(
     "Seleccione la opción de entrada / اختار طريقة إدخال البيانات:",
@@ -75,10 +93,7 @@ FORMAT RULES:
 - Formación Académica.
 - Habilidades e Idiomas.
 """
-                    response = client.models.generate_content(
-                        model='gemini-1.5-flash',
-                        contents=prompt_input,
-                    )
+                    response = generate_with_fallback(client, prompt_input)
                     
                     st.success("¡CV generado con éxito!")
                     st.markdown("---")
@@ -132,17 +147,10 @@ FORMAT RULES:
                                     pdf_text += text + "\n"
                             
                             full_prompt = f"{prompt_base}\n\nHere is the extracted content from the PDF:\n{pdf_text}"
-                            
-                            response = client.models.generate_content(
-                                model='gemini-1.5-flash',
-                                contents=full_prompt,
-                            )
+                            response = generate_with_fallback(client, full_prompt)
                         else:
                             image = Image.open(uploaded_file)
-                            response = client.models.generate_content(
-                                model='gemini-1.5-flash',
-                                contents=[image, prompt_base],
-                            )
+                            response = generate_with_fallback(client, [image, prompt_base])
                         
                         st.success("¡CV extraído y generado con éxito!")
                         st.markdown("---")
