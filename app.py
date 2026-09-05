@@ -2,6 +2,8 @@ import streamlit as st
 from google import genai
 from PIL import Image
 import pypdf
+from fpdf import FPDF
+import io
 
 # Page Configuration
 st.set_page_config(
@@ -31,11 +33,32 @@ st.markdown("""
 st.title("CVSpin España 🇪🇸")
 st.subheader("Generador Profesional de CV para el Mercado Español")
 
-# Fetch API Key securely from Secrets
 api_key = st.secrets.get("GEMINI_API_KEY")
 
+def generate_pdf(text_content):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_font("Arial", size=10)
+    
+    lines = text_content.split('\n')
+    for line in lines:
+        clean_line = line.replace('**', '').replace('##', '').replace('#', '').strip()
+        # Handle encoding for Spanish accents
+        clean_line = clean_line.encode('latin-1', 'replace').decode('latin-1')
+        
+        if line.strip().startswith('#') or line.strip().isupper():
+            pdf.set_font("Arial", 'B', size=11)
+            pdf.multi_cell(0, 6, clean_line)
+            pdf.ln(2)
+        else:
+            pdf.set_font("Arial", size=10)
+            pdf.multi_cell(0, 5, clean_line)
+            pdf.ln(1)
+            
+    return bytes(pdf.output())
+
 def call_gemini(client, contents):
-    """Fallback mechanism to handle high demand (503) or missing models."""
     models_to_try = ['gemini-3.6-flash', 'gemini-1.5-flash']
     last_err = None
     for model_name in models_to_try:
@@ -49,7 +72,6 @@ def call_gemini(client, contents):
             continue
     raise last_err
 
-# Mode Selection
 option = st.radio(
     "Seleccione la opción de entrada / اختار طريقة إدخال البيانات:",
     ("1. Ingresar datos manualmente (إدخال يدوياً)", "2. Subir documento / foto del CV (PDF, PNG, JPG)")
@@ -91,16 +113,17 @@ FORMAT RULES:
 - Habilidades e Idiomas.
 """
                     response = call_gemini(client, prompt_input)
+                    pdf_bytes = generate_pdf(response.text)
                     
                     st.success("¡CV generado con éxito!")
                     st.markdown("---")
                     st.markdown(response.text)
                     
                     st.download_button(
-                        label="📥 Descargar CV (.txt / Formato Documento)",
-                        data=response.text,
-                        file_name=f"CV_{full_name.replace(' ', '_')}.txt",
-                        mime="text/plain"
+                        label="📥 Descargar CV en PDF",
+                        data=pdf_bytes,
+                        file_name=f"CV_{full_name.replace(' ', '_')}.pdf",
+                        mime="application/pdf"
                     )
                 except Exception as e:
                     st.error(f"Ocurrió un error: {e}")
@@ -149,15 +172,17 @@ FORMAT RULES:
                             image = Image.open(uploaded_file)
                             response = call_gemini(client, [image, prompt_base])
                         
+                        pdf_bytes = generate_pdf(response.text)
+                        
                         st.success("¡CV extraído y generado con éxito!")
                         st.markdown("---")
                         st.markdown(response.text)
                         
                         st.download_button(
-                            label="📥 Descargar CV (.txt / Formato Documento)",
-                            data=response.text,
-                            file_name="CV_Optimizado_Espana.txt",
-                            mime="text/plain"
+                            label="📥 Descargar CV en PDF",
+                            data=pdf_bytes,
+                            file_name="CV_Optimizado_Espana.pdf",
+                            mime="application/pdf"
                         )
                     except Exception as e:
                         st.error(f"Ocurrió un error al procesar el archivo: {e}")
