@@ -2,6 +2,11 @@ import streamlit as st
 from google import genai
 from PIL import Image
 import pypdf
+import io
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
 # Page Configuration
 st.set_page_config(
@@ -33,6 +38,38 @@ st.subheader("Generador Profesional de CV para el Mercado Español")
 
 # Fetch API Key securely from Secrets
 api_key = st.secrets.get("GEMINI_API_KEY")
+
+def create_pdf(text):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+    styles = getSampleStyleSheet()
+    
+    # Custom PDF Styles
+    body_style = ParagraphStyle('BodyStyle', parent=styles['Normal'], fontSize=10, leading=14, spaceAfter=6)
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=18, leading=22, alignment=TA_CENTER, spaceAfter=12)
+    heading_style = ParagraphStyle('HeadingStyle', parent=styles['Heading2'], fontSize=13, leading=16, spaceBefore=10, spaceAfter=4)
+    
+    story = []
+    lines = text.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith('# '):
+            clean_text = line.replace('# ', '').replace('*', '').strip()
+            story.append(Paragraph(f"<b>{clean_text}</b>", title_style))
+        elif line.startswith('### ') or line.startswith('## '):
+            clean_text = line.replace('### ', '').replace('## ', '').replace('*', '').strip()
+            story.append(Paragraph(f"<b>{clean_text}</b>", heading_style))
+        else:
+            clean_text = line.replace('**', '<b>').replace('**', '</b>')
+            clean_text = clean_text.replace('*', '')
+            story.append(Paragraph(clean_text, body_style))
+            
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
 
 # Mode Selection
 option = st.radio(
@@ -84,17 +121,18 @@ FORMAT RULES:
                     st.markdown("---")
                     st.markdown(response.text)
                     
+                    pdf_bytes = create_pdf(response.text)
+                    
                     st.download_button(
-                        label="📄 Descargar CV (.txt)",
-                        data=response.text,
-                        file_name=f"CV_{full_name.replace(' ', '_')}.txt",
-                        mime="text/plain"
+                        label="📥 Descargar CV Profesional en PDF",
+                        data=pdf_bytes,
+                        file_name=f"CV_{full_name.replace(' ', '_')}.pdf",
+                        mime="application/pdf"
                     )
                 except Exception as e:
                     st.error(f"Ocurrió un error: {e}")
 
 else:
-    # Upload Image or PDF Option
     uploaded_file = st.file_uploader(
         "Suba un archivo PDF o una imagen del CV (PDF, PNG, JPG, JPEG)", 
         type=["pdf", "png", "jpg", "jpeg"]
@@ -124,7 +162,6 @@ FORMAT RULES:
 - Habilidades e Idiomas.
 """
 
-                        # Check if file is PDF or Image
                         if uploaded_file.type == "application/pdf":
                             pdf_reader = pypdf.PdfReader(uploaded_file)
                             pdf_text = ""
@@ -140,7 +177,6 @@ FORMAT RULES:
                                 contents=full_prompt,
                             )
                         else:
-                            # Process as Image
                             image = Image.open(uploaded_file)
                             response = client.models.generate_content(
                                 model='gemini-3.6-flash',
@@ -151,11 +187,13 @@ FORMAT RULES:
                         st.markdown("---")
                         st.markdown(response.text)
                         
+                        pdf_bytes = create_pdf(response.text)
+                        
                         st.download_button(
-                            label="📄 Descargar CV (.txt)",
-                            data=response.text,
-                            file_name="CV_Optimizado_Espana.txt",
-                            mime="text/plain"
+                            label="📥 Descargar CV Profesional en PDF",
+                            data=pdf_bytes,
+                            file_name="CV_Optimizado_Espana.pdf",
+                            mime="application/pdf"
                         )
                     except Exception as e:
                         st.error(f"Ocurrió un error al procesar el archivo: {e}")
