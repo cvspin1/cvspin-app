@@ -3,7 +3,6 @@ from google import genai
 from PIL import Image
 import pypdf
 from fpdf import FPDF
-import io
 
 # Page Configuration
 st.set_page_config(
@@ -44,7 +43,6 @@ def generate_pdf(text_content):
     lines = text_content.split('\n')
     for line in lines:
         clean_line = line.replace('**', '').replace('##', '').replace('#', '').strip()
-        # Handle encoding for Spanish accents
         clean_line = clean_line.encode('latin-1', 'replace').decode('latin-1')
         
         if line.strip().startswith('#') or line.strip().isupper():
@@ -58,10 +56,22 @@ def generate_pdf(text_content):
             
     return bytes(pdf.output())
 
-def call_gemini(client, contents):
-    models_to_try = ['gemini-3.6-flash', 'gemini-1.5-flash']
+def call_gemini_auto(client, contents):
+    """Dynamically fetches active generateContent models from your API account."""
+    available_models = []
+    for m in client.models.list():
+        # Check if model supports content generation
+        if hasattr(m, 'supported_generation_methods') and 'generateContent' in m.supported_generation_methods:
+            available_models.append(m.name)
+        elif not hasattr(m, 'supported_generation_methods'):
+            available_models.append(m.name)
+            
+    if not available_models:
+        # Fallback default
+        available_models = ['gemini-2.5-flash', 'gemini-2.0-flash']
+
     last_err = None
-    for model_name in models_to_try:
+    for model_name in available_models:
         try:
             return client.models.generate_content(
                 model=model_name,
@@ -112,7 +122,7 @@ FORMAT RULES:
 - Formación Académica.
 - Habilidades e Idiomas.
 """
-                    response = call_gemini(client, prompt_input)
+                    response = call_gemini_auto(client, prompt_input)
                     pdf_bytes = generate_pdf(response.text)
                     
                     st.success("¡CV generado con éxito!")
@@ -167,10 +177,10 @@ FORMAT RULES:
                                     pdf_text += text + "\n"
                             
                             full_prompt = f"{prompt_base}\n\nHere is the extracted content from the PDF:\n{pdf_text}"
-                            response = call_gemini(client, full_prompt)
+                            response = call_gemini_auto(client, full_prompt)
                         else:
                             image = Image.open(uploaded_file)
-                            response = call_gemini(client, [image, prompt_base])
+                            response = call_gemini_auto(client, [image, prompt_base])
                         
                         pdf_bytes = generate_pdf(response.text)
                         
