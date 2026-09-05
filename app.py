@@ -43,7 +43,7 @@ def generate_pdf_one_page(text_content):
     pdf = FPDF()
     pdf.add_page()
     
-    # Controlled margins and strict single-page flow
+    # Controlled margins and strict single-page layout
     pdf.set_margins(12, 10, 12)
     pdf.set_auto_page_break(auto=False)
     
@@ -80,11 +80,14 @@ def generate_pdf_one_page(text_content):
 
 def call_gemini_auto(client, contents):
     available_models = []
-    for m in client.models.list():
-        if hasattr(m, 'supported_generation_methods') and 'generateContent' in m.supported_generation_methods:
-            available_models.append(m.name)
-        elif not hasattr(m, 'supported_generation_methods'):
-            available_models.append(m.name)
+    try:
+        for m in client.models.list():
+            if hasattr(m, 'supported_generation_methods') and 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+            elif not hasattr(m, 'supported_generation_methods'):
+                available_models.append(m.name)
+    except Exception:
+        pass
             
     if not available_models:
         available_models = ['gemini-2.5-flash', 'gemini-2.0-flash']
@@ -103,7 +106,7 @@ def call_gemini_auto(client, contents):
 
 STRICT_SPANISH_ATS_PROMPT = """
 YOU ARE AN EXPERT SPANISH RECRUITER AND ATS SPECIALIST.
-YOUR GOAL IS TO PRODUCE A PERFECT 100% ATS-COMPLIANT CV FOR THE SPANISH JOB MARKET (Modelo Español).
+YOUR GOAL IS TO PRODUCE A PERFECT 100% ATS-COMPLIANT CV FOR THE SPANISH JOB MARKET (MODELO ESPAÑOL).
 
 CRITICAL LENGTH RULE:
 - THE CONTENT MUST BE CONCISE ENOUGH TO FIT ABSOLUTELY ON ONE SINGLE A4 PAGE.
