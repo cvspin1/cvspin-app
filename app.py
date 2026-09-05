@@ -1,5 +1,5 @@
 import streamlit as st
-from google import genai
+import google.generativeai as genai
 from PIL import Image
 import pypdf
 
@@ -34,23 +34,22 @@ st.subheader("Generador Profesional de CV para el Mercado Español")
 # Fetch API Key securely from Secrets
 api_key = st.secrets.get("GEMINI_API_KEY")
 
-def generate_with_fallback(client, contents):
-    # Try models in order of stability and performance
-    models_to_try = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']
-    last_exception = None
+def generate_robust_response(contents):
+    """Robust generation that falls back to stable Gemini models seamlessly."""
+    genai.configure(api_key=api_key)
+    models_to_try = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
     
+    last_error = None
     for model_name in models_to_try:
         try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=contents
-            )
-            return response
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(contents)
+            return response.text
         except Exception as e:
-            last_exception = e
+            last_error = e
             continue
             
-    raise last_exception
+    raise RuntimeError(f"Error al conectar con el servicio AI: {last_error}")
 
 # Mode Selection
 option = st.radio(
@@ -76,7 +75,6 @@ if "1. Ingresar datos" in option:
         else:
             with st.spinner("Procesando y optimizando el CV..."):
                 try:
-                    client = genai.Client(api_key=api_key)
                     prompt_input = f"""
 You are an expert ATS-optimized Resume Writer for the Spanish Job Market (CV Español).
 Generate a professional Spanish CV based on these details:
@@ -93,15 +91,15 @@ FORMAT RULES:
 - Formación Académica.
 - Habilidades e Idiomas.
 """
-                    response = generate_with_fallback(client, prompt_input)
+                    result_text = generate_robust_response(prompt_input)
                     
                     st.success("¡CV generado con éxito!")
                     st.markdown("---")
-                    st.markdown(response.text)
+                    st.markdown(result_text)
                     
                     st.download_button(
                         label="📥 Descargar CV (.txt / Formato Documento)",
-                        data=response.text,
+                        data=result_text,
                         file_name=f"CV_{full_name.replace(' ', '_')}.txt",
                         mime="text/plain"
                     )
@@ -122,8 +120,6 @@ else:
             else:
                 with st.spinner("Analizando el archivo y reescribiendo el CV para España..."):
                     try:
-                        client = genai.Client(api_key=api_key)
-                        
                         prompt_base = f"""
 You are an expert ATS-optimized Resume Writer for the Spanish Job Market (CV Español).
 Analyze the provided document/image of a CV and extract all relevant information (Name, Contact, Experience, Education, Skills).
@@ -147,18 +143,18 @@ FORMAT RULES:
                                     pdf_text += text + "\n"
                             
                             full_prompt = f"{prompt_base}\n\nHere is the extracted content from the PDF:\n{pdf_text}"
-                            response = generate_with_fallback(client, full_prompt)
+                            result_text = generate_robust_response(full_prompt)
                         else:
                             image = Image.open(uploaded_file)
-                            response = generate_with_fallback(client, [image, prompt_base])
+                            result_text = generate_robust_response([prompt_base, image])
                         
                         st.success("¡CV extraído y generado con éxito!")
                         st.markdown("---")
-                        st.markdown(response.text)
+                        st.markdown(result_text)
                         
                         st.download_button(
                             label="📥 Descargar CV (.txt / Formato Documento)",
-                            data=response.text,
+                            data=result_text,
                             file_name="CV_Optimizado_Espana.txt",
                             mime="text/plain"
                         )
