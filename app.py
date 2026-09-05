@@ -1,35 +1,64 @@
 import streamlit as st
 from google import genai
+from PIL import Image
 
-# Page Configuration & Branding
-st.set_page_config(page_title="Spain CV Builder", page_icon="📄")
+# Page Configuration
+st.set_page_config(
+    page_title="CVSpin España 🇪🇸",
+    page_icon="💼",
+    layout="centered"
+)
 
-# Your Brand Logo URL (You can replace this URL with your own logo link later)
-st.image("https://via.placeholder.com/150x50.png?text=YOUR+LOGO", width=150)
-st.title("Spain CV Generator 🇪🇸")
-st.write("Enter client details to generate a professional, ATS-optimized Spanish CV instantly.")
+# Custom Styling (Hide Streamlit Branding)
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stButton>button {
+        background-color: #0E1117;
+        color: white;
+        font-weight: bold;
+        border-radius: 8px;
+        border: 1px solid #4B5563;
+        width: 100%;
+        padding: 10px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# API Key Input Sidebar
-api_key = st.sidebar.text_input("Enter Gemini API Key", type="password")
+st.title("CVSpin España 🇪🇸")
+st.subheader("Generador Profesional de CV para el Mercado Español")
 
-# Data Entry Form
-with st.form("client_form"):
-    full_name = st.text_input("Full Name")
-    job_title = st.text_input("Target Job / Profession in Spain")
-    experience = st.text_area("Work Experience (Companies, Duration, Tasks)")
-    education = st.text_area("Education & Certifications")
-    skills = st.text_input("Skills, Languages & Driving License")
-    
-    submitted = st.form_submit_button("Generate Spanish CV 🚀")
+# Fetch API Key securely from Secrets
+api_key = st.secrets.get("GEMINI_API_KEY")
 
-if submitted:
-    if not api_key:
-        st.error("Please enter your Gemini API Key first!")
-    else:
-        try:
-            client = genai.Client(api_key=api_key)
-            
-            prompt = f"""
+# Mode Selection
+option = st.radio(
+    "Seleccione la opción de entrada / اختار طريقة إدخال البيانات:",
+    ("1. Ingresar datos manualmente (إدخال يدوياً)", "2. Subir imagen / foto del CV existente (رفع صورة CV قديم)")
+)
+
+if "1. Ingresar datos" in option:
+    with st.form("cv_form_manual"):
+        full_name = st.text_input("Nombre Completo")
+        job_title = st.text_input("Puesto de Trabajo Objetivo en España")
+        experience = st.text_area("Experiencia Laboral (Empresas, Fechas, Funciones)")
+        education = st.text_area("Formación Académica y Certificaciones")
+        skills = st.text_input("Habilidades, Idiomas y Carné de Conducir")
+        
+        submitted = st.form_submit_button("Generar CV Profesional ✨")
+
+    if submitted:
+        if not api_key:
+            st.error("Error de configuración en el servidor. Falta la API Key en Secrets.")
+        elif not full_name or not job_title:
+            st.warning("Por favor, complete los campos obligatorios.")
+        else:
+            with st.spinner("Procesando y optimizando el CV..."):
+                try:
+                    client = genai.Client(api_key=api_key)
+                    prompt_input = f"""
 You are an expert ATS-optimized Resume Writer for the Spanish Job Market (CV Español).
 Generate a professional Spanish CV based on these details:
 - Full Name: {full_name}
@@ -45,17 +74,69 @@ FORMAT RULES:
 - Formación Académica.
 - Habilidades e Idiomas.
 """
-            
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-            )
-            
-            st.success("CV generated successfully!")
-            st.markdown(response.text)
-            
-            # Download Button
-            st.download_button("Download CV (TXT)", response.text, file_name=f"CV_{full_name}.txt")
-            
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=prompt_input,
+                    )
+                    
+                    st.success("¡CV generado con éxito!")
+                    st.markdown("---")
+                    st.markdown(response.text)
+                    
+                    st.download_button(
+                        label="📄 Descargar CV (.txt)",
+                        data=response.text,
+                        file_name=f"CV_{full_name.replace(' ', '_')}.txt",
+                        mime="text/plain"
+                    )
+                except Exception as e:
+                    st.error(f"Ocurrió un error: {e}")
+
+else:
+    # Upload Image Option
+    uploaded_file = st.file_uploader("Suba una imagen/foto clara del CV del cliente (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
+    job_target_photo = st.text_input("Puesto de Trabajo Objetivo en España (Opcional)")
+    
+    if uploaded_file is not None:
+        image = Image.open(uploaded_file)
+        st.image(image, caption="CV subido", use_column_width=True)
+        
+        if st.button("Extraer datos y Generar CV Optimizado ✨"):
+            if not api_key:
+                st.error("Error de configuración en el servidor. Falta la API Key en Secrets.")
+            else:
+                with st.spinner("Analizando la imagen y reescribiendo el CV para España..."):
+                    try:
+                        client = genai.Client(api_key=api_key)
+                        
+                        prompt_image = f"""
+You are an expert ATS-optimized Resume Writer for the Spanish Job Market (CV Español).
+Analyze the provided image of a CV and extract all relevant information (Name, Contact, Experience, Education, Skills).
+Re-write and structure it into a brand new, highly professional Spanish CV optimized for ATS.
+Target Job Title in Spain: {job_target_photo if job_target_photo else 'Same as extracted or professional role'}
+
+FORMAT RULES:
+- Spanish Language strictly.
+- Professional Summary (Perfil Profesional).
+- Experiencia Laboral (using Spanish ATS action verbs).
+- Formación Académica.
+- Habilidades e Idiomas.
+"""
+                        
+                        response = client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=[image, prompt_image],
+                        )
+                        
+                        st.success("¡CV extraído y generado con éxito!")
+                        st.markdown("---")
+                        st.markdown(response.text)
+                        
+                        st.download_button(
+                            label="📄 Descargar CV (.txt)",
+                            data=response.text,
+                            file_name="CV_Optimizado_Espana.txt",
+                            mime="text/plain"
+                        )
+                    except Exception as e:
+                        st.error(f"Ocurrió un error al procesar la imagen: {e}")
