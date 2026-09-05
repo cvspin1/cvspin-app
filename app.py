@@ -43,15 +43,15 @@ def generate_pdf_one_page(text_content):
     pdf = FPDF()
     pdf.add_page()
     
-    # Controlled margins and strict single-page layout
-    pdf.set_margins(12, 10, 12)
+    # Balanced margins and tight spacing to fill 1 single A4 page completely
+    pdf.set_margins(10, 8, 10)
     pdf.set_auto_page_break(auto=False)
     
     lines = text_content.split('\n')
     for line in lines:
         clean_line = clean_text_for_pdf(line)
         if not clean_line:
-            pdf.ln(1.5)
+            pdf.ln(1)
             continue
             
         try:
@@ -61,20 +61,20 @@ def generate_pdf_one_page(text_content):
 
         # Section Titles / Headers
         if line.strip().startswith('#') or (clean_line.isupper() and len(clean_line) < 40):
-            pdf.ln(2.5)
-            pdf.set_font("Arial", 'B', size=10)
-            pdf.multi_cell(0, 4.5, safe_text)
-            pdf.ln(0.8)
+            pdf.ln(2)
+            pdf.set_font("Arial", 'B', size=9.5)
+            pdf.multi_cell(0, 4, safe_text)
+            pdf.ln(0.5)
         # Bullet points
         elif clean_line.startswith('*') or clean_line.startswith('-'):
-            pdf.set_font("Arial", size=8.5)
-            pdf.multi_cell(0, 4.0, "  " + safe_text)
-            pdf.ln(0.3)
+            pdf.set_font("Arial", size=8)
+            pdf.multi_cell(0, 3.6, "  " + safe_text)
+            pdf.ln(0.2)
         # Main text / Subheaders
         else:
-            pdf.set_font("Arial", size=9)
-            pdf.multi_cell(0, 4.2, safe_text)
-            pdf.ln(0.5)
+            pdf.set_font("Arial", size=8.5)
+            pdf.multi_cell(0, 3.8, safe_text)
+            pdf.ln(0.3)
             
     return bytes(pdf.output())
 
@@ -108,11 +108,10 @@ STRICT_SPANISH_ATS_PROMPT = """
 YOU ARE AN EXPERT SPANISH RECRUITER AND ATS SPECIALIST.
 YOUR GOAL IS TO PRODUCE A PERFECT 100% ATS-COMPLIANT CV FOR THE SPANISH JOB MARKET (MODELO ESPAÑOL).
 
-CRITICAL LENGTH RULE:
-- THE CONTENT MUST BE CONCISE ENOUGH TO FIT ABSOLUTELY ON ONE SINGLE A4 PAGE.
-- Maximum 2 short bullet points per job experience.
-- Keep the summary (Perfil Profesional) to a maximum of 3 lines.
-- Do not write unnecessary extra lines.
+CRITICAL FORMATTING RULES:
+- START DIRECTLY WITH THE CV CONTENT. NO INTRODUCTORY TEXT, NO GREETINGS, NO EXPLANATIONS, NO DISCLAIMERS.
+- THE CONTENT MUST FIT ABSOLUTELY ON ONE SINGLE A4 PAGE.
+- Keep bullet points short and concise.
 
 SPANISH CV STRUCTURE (Modelo Español):
 1. ENCABEZADO: Full Name, Target Role, City/Country, Phone, LinkedIn.
