@@ -76,7 +76,7 @@ FORMAT RULES:
 - Habilidades e Idiomas.
 """
                     response = client.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model='gemini-3.6-flash',
                         contents=prompt_input,
                     )
                     
@@ -136,14 +136,14 @@ FORMAT RULES:
                             full_prompt = f"{prompt_base}\n\nHere is the extracted content from the PDF:\n{pdf_text}"
                             
                             response = client.models.generate_content(
-                                model='gemini-2.5-flash',
+                                model='gemini-3.6-flash',
                                 contents=full_prompt,
                             )
                         else:
                             # Process as Image
                             image = Image.open(uploaded_file)
                             response = client.models.generate_content(
-                                model='gemini-2.5-flash',
+                                model='gemini-3.6-flash',
                                 contents=[image, prompt_base],
                             )
                         
