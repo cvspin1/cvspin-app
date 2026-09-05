@@ -34,40 +34,42 @@ st.subheader("Generador Profesional de CV para el Mercado Español")
 
 api_key = st.secrets.get("GEMINI_API_KEY")
 
-def generate_pdf(text_content):
+def generate_pdf_one_page(text_content):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.set_font("Arial", size=10)
+    
+    # Compact margins for 1-page fit
+    pdf.set_margins(10, 8, 10)
+    pdf.set_auto_page_break(auto=True, margin=8)
     
     lines = text_content.split('\n')
     for line in lines:
         clean_line = line.replace('**', '').replace('##', '').replace('#', '').strip()
         clean_line = clean_line.encode('latin-1', 'replace').decode('latin-1')
         
+        if not clean_line:
+            continue
+            
         if line.strip().startswith('#') or line.strip().isupper():
-            pdf.set_font("Arial", 'B', size=11)
-            pdf.multi_cell(0, 6, clean_line)
-            pdf.ln(2)
-        else:
-            pdf.set_font("Arial", size=10)
-            pdf.multi_cell(0, 5, clean_line)
+            pdf.set_font("Arial", 'B', size=9.5)
+            pdf.multi_cell(0, 4.5, clean_line)
             pdf.ln(1)
+        else:
+            pdf.set_font("Arial", size=8.5)
+            pdf.multi_cell(0, 3.8, clean_line)
+            pdf.ln(0.5)
             
     return bytes(pdf.output())
 
 def call_gemini_auto(client, contents):
-    """Dynamically fetches active generateContent models from your API account."""
     available_models = []
     for m in client.models.list():
-        # Check if model supports content generation
         if hasattr(m, 'supported_generation_methods') and 'generateContent' in m.supported_generation_methods:
             available_models.append(m.name)
         elif not hasattr(m, 'supported_generation_methods'):
             available_models.append(m.name)
             
     if not available_models:
-        # Fallback default
         available_models = ['gemini-2.5-flash', 'gemini-2.0-flash']
 
     last_err = None
@@ -86,6 +88,15 @@ option = st.radio(
     "Seleccione la opción de entrada / اختار طريقة إدخال البيانات:",
     ("1. Ingresar datos manualmente (إدخال يدوياً)", "2. Subir documento / foto del CV (PDF, PNG, JPG)")
 )
+
+STRICT_PROMPT_RULES = """
+CRITICAL INSTRUCTION:
+- Output ONLY the CV content.
+- DO NOT write any introductory notes, preamble, explanations, or notes at the top or bottom.
+- Absolutely NO 'ATS Optimization Notes' or post-explanations.
+- Keep descriptions extremely concise, high-impact, and compact so that the CV fits strictly on ONE single page.
+- Language: Spanish strictly.
+"""
 
 if "1. Ingresar datos" in option:
     with st.form("cv_form_manual"):
@@ -115,22 +126,17 @@ Generate a professional Spanish CV based on these details:
 - Education: {education}
 - Skills/Languages: {skills}
 
-FORMAT RULES:
-- Spanish Language strictly.
-- Professional Summary (Perfil Profesional).
-- Experiencia Laboral (using Spanish ATS action verbs).
-- Formación Académica.
-- Habilidades e Idiomas.
+{STRICT_PROMPT_RULES}
 """
                     response = call_gemini_auto(client, prompt_input)
-                    pdf_bytes = generate_pdf(response.text)
+                    pdf_bytes = generate_pdf_one_page(response.text)
                     
-                    st.success("¡CV generado con éxito!")
+                    st.success("¡CV generado con éxito en 1 página!")
                     st.markdown("---")
                     st.markdown(response.text)
                     
                     st.download_button(
-                        label="📥 Descargar CV en PDF",
+                        label="📥 Descargar CV en PDF (1 Página)",
                         data=pdf_bytes,
                         file_name=f"CV_{full_name.replace(' ', '_')}.pdf",
                         mime="application/pdf"
@@ -160,12 +166,7 @@ Analyze the provided document/image of a CV and extract all relevant information
 Re-write and structure it into a brand new, highly professional Spanish CV optimized for ATS.
 Target Job Title in Spain: {job_target_file if job_target_file else 'Same as extracted or professional role'}
 
-FORMAT RULES:
-- Spanish Language strictly.
-- Professional Summary (Perfil Profesional).
-- Experiencia Laboral (using Spanish ATS action verbs).
-- Formación Académica.
-- Habilidades e Idiomas.
+{STRICT_PROMPT_RULES}
 """
 
                         if uploaded_file.type == "application/pdf":
@@ -176,20 +177,20 @@ FORMAT RULES:
                                 if text:
                                     pdf_text += text + "\n"
                             
-                            full_prompt = f"{prompt_base}\n\nHere is the extracted content from the PDF:\n{pdf_text}"
+                            full_prompt = f"{prompt_base}\n\nContent:\n{pdf_text}"
                             response = call_gemini_auto(client, full_prompt)
                         else:
                             image = Image.open(uploaded_file)
                             response = call_gemini_auto(client, [image, prompt_base])
                         
-                        pdf_bytes = generate_pdf(response.text)
+                        pdf_bytes = generate_pdf_one_page(response.text)
                         
-                        st.success("¡CV extraído y generado con éxito!")
+                        st.success("¡CV extraído y generado con éxito en 1 página!")
                         st.markdown("---")
                         st.markdown(response.text)
                         
                         st.download_button(
-                            label="📥 Descargar CV en PDF",
+                            label="📥 Descargar CV en PDF (1 Página)",
                             data=pdf_bytes,
                             file_name="CV_Optimizado_Espana.pdf",
                             mime="application/pdf"
