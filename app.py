@@ -1,6 +1,7 @@
 import streamlit as st
 from google import genai
 from PIL import Image
+import pypdf
 
 # Page Configuration
 st.set_page_config(
@@ -36,7 +37,7 @@ api_key = st.secrets.get("GEMINI_API_KEY")
 # Mode Selection
 option = st.radio(
     "Seleccione la opción de entrada / اختار طريقة إدخال البيانات:",
-    ("1. Ingresar datos manualmente (إدخال يدوياً)", "2. Subir imagen / foto del CV existente (رفع صورة CV قديم)")
+    ("1. Ingresar datos manualmente (إدخال يدوياً)", "2. Subir documento / foto del CV (PDF, PNG, JPG)")
 )
 
 if "1. Ingresar datos" in option:
@@ -93,27 +94,27 @@ FORMAT RULES:
                     st.error(f"Ocurrió un error: {e}")
 
 else:
-    # Upload Image Option
-    uploaded_file = st.file_uploader("Suba una imagen/foto clara del CV del cliente (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
-    job_target_photo = st.text_input("Puesto de Trabajo Objetivo en España (Opcional)")
+    # Upload Image or PDF Option
+    uploaded_file = st.file_uploader(
+        "Suba un archivo PDF o una imagen del CV (PDF, PNG, JPG, JPEG)", 
+        type=["pdf", "png", "jpg", "jpeg"]
+    )
+    job_target_file = st.text_input("Puesto de Trabajo Objetivo en España (Opcional)")
     
     if uploaded_file is not None:
-        image = Image.open(uploaded_file)
-        st.image(image, caption="CV subido", use_column_width=True)
-        
         if st.button("Extraer datos y Generar CV Optimizado ✨"):
             if not api_key:
                 st.error("Error de configuración en el servidor. Falta la API Key en Secrets.")
             else:
-                with st.spinner("Analizando la imagen y reescribiendo el CV para España..."):
+                with st.spinner("Analizando el archivo y reescribiendo el CV para España..."):
                     try:
                         client = genai.Client(api_key=api_key)
                         
-                        prompt_image = f"""
+                        prompt_base = f"""
 You are an expert ATS-optimized Resume Writer for the Spanish Job Market (CV Español).
-Analyze the provided image of a CV and extract all relevant information (Name, Contact, Experience, Education, Skills).
+Analyze the provided document/image of a CV and extract all relevant information (Name, Contact, Experience, Education, Skills).
 Re-write and structure it into a brand new, highly professional Spanish CV optimized for ATS.
-Target Job Title in Spain: {job_target_photo if job_target_photo else 'Same as extracted or professional role'}
+Target Job Title in Spain: {job_target_file if job_target_file else 'Same as extracted or professional role'}
 
 FORMAT RULES:
 - Spanish Language strictly.
@@ -122,11 +123,29 @@ FORMAT RULES:
 - Formación Académica.
 - Habilidades e Idiomas.
 """
-                        
-                        response = client.models.generate_content(
-                            model='gemini-2.5-flash',
-                            contents=[image, prompt_image],
-                        )
+
+                        # Check if file is PDF or Image
+                        if uploaded_file.type == "application/pdf":
+                            pdf_reader = pypdf.PdfReader(uploaded_file)
+                            pdf_text = ""
+                            for page in pdf_reader.pages:
+                                text = page.extract_text()
+                                if text:
+                                    pdf_text += text + "\n"
+                            
+                            full_prompt = f"{prompt_base}\n\nHere is the extracted content from the PDF:\n{pdf_text}"
+                            
+                            response = client.models.generate_content(
+                                model='gemini-2.5-flash',
+                                contents=full_prompt,
+                            )
+                        else:
+                            # Process as Image
+                            image = Image.open(uploaded_file)
+                            response = client.models.generate_content(
+                                model='gemini-2.5-flash',
+                                contents=[image, prompt_base],
+                            )
                         
                         st.success("¡CV extraído y generado con éxito!")
                         st.markdown("---")
@@ -139,4 +158,4 @@ FORMAT RULES:
                             mime="text/plain"
                         )
                     except Exception as e:
-                        st.error(f"Ocurrió un error al procesar la imagen: {e}")
+                        st.error(f"Ocurrió un error al procesar el archivo: {e}")
