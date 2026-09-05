@@ -34,23 +34,38 @@ st.subheader("Generador Profesional de CV para el Mercado Español")
 
 api_key = st.secrets.get("GEMINI_API_KEY")
 
+def clean_text_for_pdf(text):
+    """Sanitizes text and handles standard character mappings for Latin-1 FPDF."""
+    text = text.replace('**', '').replace('##', '').replace('#', '')
+    text = text.replace('?', '-').replace('"', '').replace('•', '-')
+    
+    # Spanish accents and characters mapping
+    replacements = {
+        'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
+        'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U',
+        'ñ': 'n', 'Ñ': 'N', 'ü': 'u', 'Ü': 'U'
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    return text.strip()
+
 def generate_pdf_one_page(text_content):
     pdf = FPDF()
     pdf.add_page()
     
-    # Compact margins for 1-page fit
-    pdf.set_margins(10, 8, 10)
-    pdf.set_auto_page_break(auto=True, margin=8)
+    # Strict 1-Page Layout Dimensions
+    pdf.set_margins(12, 10, 12)
+    pdf.set_auto_page_break(auto=True, margin=10)
     
     lines = text_content.split('\n')
     for line in lines:
-        clean_line = line.replace('**', '').replace('##', '').replace('#', '').strip()
-        clean_line = clean_line.encode('latin-1', 'replace').decode('latin-1')
-        
+        clean_line = clean_text_for_pdf(line)
         if not clean_line:
             continue
             
-        if line.strip().startswith('#') or line.strip().isupper():
+        # Section titles detection (Headers)
+        if line.strip().startswith('#') or (clean_line.isupper() and len(clean_line) < 40):
+            pdf.ln(1.5)
             pdf.set_font("Arial", 'B', size=9.5)
             pdf.multi_cell(0, 4.5, clean_line)
             pdf.ln(1)
@@ -84,19 +99,27 @@ def call_gemini_auto(client, contents):
             continue
     raise last_err
 
+STRICT_SPANISH_ATS_PROMPT = """
+YOU ARE AN EXPERT SPANISH RECRUITER AND ATS SPECIALIST.
+YOUR GOAL IS TO PRODUCE A PERFECT 100% ATS-COMPLIANT CV FOR THE SPANISH JOB MARKET (Modelo Español).
+
+STRICT COMPLIANCE RULES:
+1. STRICT 1-PAGE LIMIT: Ultra-concise, high-impact bullet points.
+2. LANGUAGE: Standard Professional Spanish (Español Profesional de España).
+3. NO PREAMBLE / NO EXPLANATIONS: Do not include introductory text, disclaimers, or "ATS Optimization Notes". Return ONLY the clean CV content.
+4. SPANISH CV STRUCTURE (Modelo Español):
+   - ENCABEZADO: Full Name, Target Role, Location (City, Country), Phone (with intl code), Professional Email, LinkedIn URL. (NO marital status, NO nationality, NO DNI/NIE, NO exact birth dates).
+   - PERFIL PROFESIONAL: 3-4 lines summarising core expertise, value proposition, and keywords.
+   - EXPERIENCIA PROFESIONAL: Reverse chronological order. Formatted as: Puesto | Empresa | Fechas (Enero 2022 - Presente) | Ciudad. Use strong Spanish action verbs (Lideré, Coordiné, Implementé, Gestioné, Optimice).
+   - EDUCACIÓN: Degree/Diploma | Institution | City.
+   - COMPETENCIAS E IDIOMAS: Grouped Hard & Soft Skills, Languages using European framework (Nativo, Avanzado/C1, Intermedio/B2).
+5. CLEAN DATE FORMAT: Use clear hyphenated dates (e.g., Enero 2023 - Presente). NEVER use question marks or non-standard symbols.
+"""
+
 option = st.radio(
     "Seleccione la opción de entrada / اختار طريقة إدخال البيانات:",
     ("1. Ingresar datos manualmente (إدخال يدوياً)", "2. Subir documento / foto del CV (PDF, PNG, JPG)")
 )
-
-STRICT_PROMPT_RULES = """
-CRITICAL INSTRUCTION:
-- Output ONLY the CV content.
-- DO NOT write any introductory notes, preamble, explanations, or notes at the top or bottom.
-- Absolutely NO 'ATS Optimization Notes' or post-explanations.
-- Keep descriptions extremely concise, high-impact, and compact so that the CV fits strictly on ONE single page.
-- Language: Spanish strictly.
-"""
 
 if "1. Ingresar datos" in option:
     with st.form("cv_form_manual"):
@@ -114,31 +137,30 @@ if "1. Ingresar datos" in option:
         elif not full_name or not job_title:
             st.warning("Por favor, complete los campos obligatorios.")
         else:
-            with st.spinner("Procesando y optimizando el CV..."):
+            with st.spinner("Procesando y optimizando el CV según las normas de España..."):
                 try:
                     client = genai.Client(api_key=api_key)
                     prompt_input = f"""
-You are an expert ATS-optimized Resume Writer for the Spanish Job Market (CV Español).
-Generate a professional Spanish CV based on these details:
-- Full Name: {full_name}
-- Target Job: {job_title}
-- Experience: {experience}
-- Education: {education}
-- Skills/Languages: {skills}
+{STRICT_SPANISH_ATS_PROMPT}
 
-{STRICT_PROMPT_RULES}
+USER INPUT DATA:
+- Nombre: {full_name}
+- Puesto Objetivo: {job_title}
+- Experiencia: {experience}
+- Educación: {education}
+- Habilidades e Idiomas: {skills}
 """
                     response = call_gemini_auto(client, prompt_input)
                     pdf_bytes = generate_pdf_one_page(response.text)
                     
-                    st.success("¡CV generado con éxito en 1 página!")
+                    st.success("¡CV 100% Optimizado para España generado con éxito!")
                     st.markdown("---")
                     st.markdown(response.text)
                     
                     st.download_button(
-                        label="📥 Descargar CV en PDF (1 Página)",
+                        label="📥 Descargar CV en PDF (Normas España - 1 Página)",
                         data=pdf_bytes,
-                        file_name=f"CV_{full_name.replace(' ', '_')}.pdf",
+                        file_name=f"CV_{full_name.replace(' ', '_')}_Espana.pdf",
                         mime="application/pdf"
                     )
                 except Exception as e:
@@ -156,17 +178,14 @@ else:
             if not api_key:
                 st.error("Error de configuración en el servidor. Falta la API Key en Secrets.")
             else:
-                with st.spinner("Analizando el archivo y reescribiendo el CV para España..."):
+                with st.spinner("Analizando el archivo y aplicando el estándar de España..."):
                     try:
                         client = genai.Client(api_key=api_key)
                         
                         prompt_base = f"""
-You are an expert ATS-optimized Resume Writer for the Spanish Job Market (CV Español).
-Analyze the provided document/image of a CV and extract all relevant information (Name, Contact, Experience, Education, Skills).
-Re-write and structure it into a brand new, highly professional Spanish CV optimized for ATS.
-Target Job Title in Spain: {job_target_file if job_target_file else 'Same as extracted or professional role'}
+{STRICT_SPANISH_ATS_PROMPT}
 
-{STRICT_PROMPT_RULES}
+Target Job Title in Spain: {job_target_file if job_target_file else 'Mismo puesto detectado o perfil profesional óptimo'}
 """
 
                         if uploaded_file.type == "application/pdf":
@@ -177,7 +196,7 @@ Target Job Title in Spain: {job_target_file if job_target_file else 'Same as ext
                                 if text:
                                     pdf_text += text + "\n"
                             
-                            full_prompt = f"{prompt_base}\n\nContent:\n{pdf_text}"
+                            full_prompt = f"{prompt_base}\n\nDocument Content:\n{pdf_text}"
                             response = call_gemini_auto(client, full_prompt)
                         else:
                             image = Image.open(uploaded_file)
@@ -185,12 +204,12 @@ Target Job Title in Spain: {job_target_file if job_target_file else 'Same as ext
                         
                         pdf_bytes = generate_pdf_one_page(response.text)
                         
-                        st.success("¡CV extraído y generado con éxito en 1 página!")
+                        st.success("¡CV 100% Optimizado para España generado con éxito!")
                         st.markdown("---")
                         st.markdown(response.text)
                         
                         st.download_button(
-                            label="📥 Descargar CV en PDF (1 Página)",
+                            label="📥 Descargar CV en PDF (Normas España - 1 Página)",
                             data=pdf_bytes,
                             file_name="CV_Optimizado_Espana.pdf",
                             mime="application/pdf"
