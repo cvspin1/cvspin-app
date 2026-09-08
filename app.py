@@ -43,15 +43,15 @@ def generate_pdf_one_page(text_content):
     pdf = FPDF()
     pdf.add_page()
     
-    # Controlled margins to safely fit and fill 1 page cleanly
-    pdf.set_margins(12, 10, 12)
+    # هوامش مضبولة لملء الصفحة بالكامل بشكل متناسق
+    pdf.set_margins(12, 8, 12)
     pdf.set_auto_page_break(auto=False)
     
     lines = text_content.split('\n')
     for line in lines:
         clean_line = clean_text_for_pdf(line)
         if not clean_line:
-            pdf.ln(2.0) # تباعد متوازن يملأ الفراغ السفلي بدون تجاوز الصفحة
+            pdf.ln(1.8)
             continue
             
         try:
@@ -61,20 +61,20 @@ def generate_pdf_one_page(text_content):
 
         # Section Titles / Headers
         if line.strip().startswith('#') or (clean_line.isupper() and len(clean_line) < 40):
-            pdf.ln(2.5)
-            pdf.set_font("Arial", 'B', size=10.2)
-            pdf.multi_cell(0, 4.6, safe_text)
-            pdf.ln(0.6)
+            pdf.ln(2.2)
+            pdf.set_font("Arial", 'B', size=10.5)
+            pdf.multi_cell(0, 4.5, safe_text)
+            pdf.ln(0.5)
         # Bullet points
         elif clean_line.startswith('*') or clean_line.startswith('-'):
-            pdf.set_font("Arial", size=8.8)
-            pdf.multi_cell(0, 4.2, "  " + safe_text)
-            pdf.ln(0.4)
+            pdf.set_font("Arial", size=9)
+            pdf.multi_cell(0, 4.1, "  " + safe_text)
+            pdf.ln(0.3)
         # Main text / Subheaders
         else:
-            pdf.set_font("Arial", size=9.2)
-            pdf.multi_cell(0, 4.4, safe_text)
-            pdf.ln(0.5)
+            pdf.set_font("Arial", size=9.5)
+            pdf.multi_cell(0, 4.3, safe_text)
+            pdf.ln(0.4)
             
     return bytes(pdf.output())
 
