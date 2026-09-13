@@ -1,5 +1,5 @@
 streamlit
-google-genai
-fpdf2
+google-generativeai
 pypdf
+fpdf2
 Pillow
