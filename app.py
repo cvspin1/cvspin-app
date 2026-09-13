@@ -1,6 +1,5 @@
 import streamlit as st
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 from PIL import Image
 import pypdf
 from fpdf import FPDF
@@ -33,35 +32,32 @@ st.caption("Generador profesional de CV para el mercado español")
 
 
 # =========================================================
-# API KEY & CLIENT
+# API KEY & CLIENT CONFIGURATION
 # =========================================================
 
 api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
-    st.warning("La API Key no está configurada. Añade GEMINI_API_KEY en Streamlit Secrets.")
+    st.error("⚠️ La API Key no está configurada. Añade GEMINI_API_KEY en Streamlit Secrets.")
+else:
+    genai.configure(api_key=api_key)
 
-def get_client():
-    if not api_key:
-        raise RuntimeError("Missing GEMINI_API_KEY")
-    return genai.Client(api_key=api_key)
-
-def call_gemini(client, contents):
-    # Modelos actualizados para evitar el error 404 NOT_FOUND
-    models_to_try = ["gemini-3.6-flash", "gemini-2.5-flash"]
+def call_gemini(contents):
+    # Models n3mlo fihom l-versions l-khaddamin db
+    models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro"]
     last_error = None
 
-    config = types.GenerateContentConfig(
-        response_mime_type="application/json"
-    )
+    generation_config = {
+        "response_mime_type": "application/json"
+    }
 
     for model_name in models_to_try:
         try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=contents,
-                config=config
+            model = genai.GenerativeModel(
+                model_name=model_name,
+                generation_config=generation_config
             )
+            response = model.generate_content(contents)
             if response and response.text:
                 return response
         except Exception as e:
@@ -441,11 +437,10 @@ if option.startswith("1."):
         else:
             with st.spinner("Organizando el CV según el formato profesional español..."):
                 try:
-                    client = get_client()
                     user_input = prepare_manual_input(full_name, job_title, experience, education, skills)
                     prompt = STRICT_SPANISH_CV_PROMPT + "\n\n" + user_input
                     
-                    response = call_gemini(client, prompt)
+                    response = call_gemini(prompt)
                     cv_data = extract_json(response.text)
                     pdf_bytes = generate_fitted_pdf(cv_data)
 
@@ -469,21 +464,28 @@ else:
         else:
             with st.spinner("Analizando el CV y organizando la información..."):
                 try:
-                    client = get_client()
                     target = job_target_file if job_target_file else "No especificado"
                     prompt_base = f"{STRICT_SPANISH_CV_PROMPT}\n\nTARGET JOB IN SPAIN:\n{target}"
 
-                    # ارسال الملف مباشرة لـ Gemini ليقرأه سواء كان PDF أو صورة
                     if uploaded_file.type == "application/pdf":
-                        pdf_bytes = uploaded_file.read()
-                        pdf_part = types.Part.from_bytes(
-                            data=pdf_bytes,
-                            mime_type="application/pdf"
-                        )
-                        response = call_gemini(client, [pdf_part, prompt_base])
+                        # Extracción de texto con PyPDF
+                        pdf_reader = pypdf.PdfReader(uploaded_file)
+                        pdf_text = "".join([page.extract_text() or "" for page in pdf_reader.pages])
+                        
+                        if pdf_text.strip():
+                            full_prompt = f"{prompt_base}\n\nORIGINAL CV CONTENT:\n{pdf_text}"
+                            response = call_gemini(full_prompt)
+                        else:
+                            # Si es PDF escaneado (sin texto)
+                            pdf_bytes = uploaded_file.getvalue()
+                            pdf_part = {
+                                "mime_type": "application/pdf",
+                                "data": pdf_bytes
+                            }
+                            response = call_gemini([pdf_part, prompt_base])
                     else:
                         image = Image.open(uploaded_file)
-                        response = call_gemini(client, [image, prompt_base])
+                        response = call_gemini([image, prompt_base])
 
                     cv_data = extract_json(response.text)
                     pdf_bytes = generate_fitted_pdf(cv_data)
