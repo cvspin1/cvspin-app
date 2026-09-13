@@ -8,21 +8,14 @@ import json
 import re
 import io
 
-
 # =========================================================
-# PAGE CONFIG
+# PAGE CONFIG & UI
 # =========================================================
-
 st.set_page_config(
     page_title="CVSpin España 🇪🇸",
     page_icon="💼",
     layout="centered"
 )
-
-
-# =========================================================
-# CUSTOM UI
-# =========================================================
 
 st.markdown("""
 
@@ -31,28 +24,19 @@ st.markdown("""
 st.title("CVSpin España 🇪🇸")
 st.caption("Generador profesional de CV para el mercado español")
 
-
 # =========================================================
-# API KEY & CLIENT CONFIGURATION
+# API & GEMINI CALL HANDLER
 # =========================================================
-
 api_key = st.secrets.get("GEMINI_API_KEY")
-
-if not api_key:
-    st.error("⚠️ La API Key no está configurada. Añade GEMINI_API_KEY en Streamlit Secrets.")
 
 def call_gemini(contents):
     if not api_key:
-        raise RuntimeError("Missing GEMINI_API_KEY")
+        raise RuntimeError("Missing GEMINI_API_KEY in Streamlit Secrets.")
 
     client = genai.Client(api_key=api_key)
     
-    # أسماء الموديلات الرسمية المتاحة حالياً لتفادي خطأ 404
-    models_to_try = [
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        "gemini-1.5-flash"
-    ]
+    # قائمة بجميع الموديلات المتاحة لتفادي أي خطأ 404
+    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
     last_error = None
 
     config = types.GenerateContentConfig(
@@ -70,17 +54,15 @@ def call_gemini(contents):
                 return response
         except Exception as e:
             last_error = e
+            continue
 
     if last_error:
         raise last_error
-
     raise RuntimeError("No Gemini model was available.")
 
-
 # =========================================================
-# AI PROMPT
+# PROMPT DEFINITION
 # =========================================================
-
 STRICT_SPANISH_CV_PROMPT = """
 YOU ARE AN EXPERT SPANISH CV FORMATTER AND RECRUITMENT SPECIALIST.
 
@@ -132,11 +114,9 @@ Return JSON adhering exactly to this structure:
 }
 """
 
-
 # =========================================================
-# JSON CLEANING & HELPERS
+# HELPERS & PARSING
 # =========================================================
-
 def extract_json(text):
     if not text:
         raise ValueError("Gemini returned an empty response.")
@@ -161,11 +141,9 @@ def get_list(data, key):
     value = data.get(key, [])
     return value if isinstance(value, list) else []
 
-
 # =========================================================
-# PDF CLASS & RENDER
+# PDF GENERATOR
 # =========================================================
-
 class SpanishCV(FPDF):
     def __init__(self, font_size=9.2):
         super().__init__(orientation="P", unit="mm", format="A4")
@@ -185,17 +163,14 @@ class SpanishCV(FPDF):
 
         self.set_text_color(25, 25, 25)
 
-
 def section_title(pdf, title):
     pdf.ln(2)
     pdf.set_font(pdf.font_bold, "B", 10)
     pdf.set_text_color(20, 20, 20)
     pdf.cell(0, 5, title.upper(), ln=1)
-    
     pdf.set_draw_color(190, 190, 190)
     pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
     pdf.ln(2)
-
 
 def normal_text(pdf, text, size=None):
     text = safe(text)
@@ -207,7 +182,6 @@ def normal_text(pdf, text, size=None):
     pdf.multi_cell(0, 4.1, text)
     pdf.ln(0.7)
 
-
 def bullet(pdf, text, size=None):
     text = safe(text)
     if not text:
@@ -215,18 +189,15 @@ def bullet(pdf, text, size=None):
     size = size or 8.5
     pdf.set_font(pdf.font_regular, "", size)
     pdf.set_text_color(45, 45, 45)
-    
     x = pdf.get_x()
     pdf.cell(4, 4, "-")
     pdf.multi_cell(0, 4, text)
     pdf.set_x(x)
     pdf.ln(0.4)
 
-
 def render_header(pdf, data):
     name = safe(data.get("name"))
     title = safe(data.get("title"))
-
     pdf.set_font(pdf.font_bold, "B", 20)
     pdf.set_text_color(15, 15, 15)
     pdf.cell(0, 8, name, ln=1)
@@ -243,19 +214,16 @@ def render_header(pdf, data):
         pdf.multi_cell(0, 4, "  |  ".join(contact_parts))
         pdf.ln(2)
 
-
 def render_profile(pdf, data):
     profile = safe(data.get("profile"))
     if profile:
         section_title(pdf, "Perfil profesional")
         normal_text(pdf, profile, 8.8)
 
-
 def render_experience(pdf, data):
     experiences = get_list(data, "experience")
     if not experiences:
         return
-
     section_title(pdf, "Experiencia profesional")
     for exp in experiences:
         if not isinstance(exp, dict):
@@ -265,7 +233,6 @@ def render_experience(pdf, data):
         location = safe(exp.get("location"))
         start = safe(exp.get("start_date"))
         end = safe(exp.get("end_date"))
-
         dates = f"{start} – {end}" if start and end else (start or end)
 
         if position:
@@ -281,15 +248,12 @@ def render_experience(pdf, data):
 
         for item in get_list(exp, "bullets"):
             bullet(pdf, item, 8.2)
-
         pdf.ln(1)
-
 
 def render_education(pdf, data):
     education = get_list(data, "education")
     if not education:
         return
-
     section_title(pdf, "Educación")
     for edu in education:
         if not isinstance(edu, dict):
@@ -307,7 +271,6 @@ def render_education(pdf, data):
             pdf.multi_cell(0, 3.7, " | ".join(meta))
         pdf.ln(1)
 
-
 def render_skills(pdf, data):
     skills = get_list(data, "skills")
     certifications = get_list(data, "certifications")
@@ -315,7 +278,6 @@ def render_skills(pdf, data):
 
     if not skills and not certifications and not additional:
         return
-
     section_title(pdf, "Competencias y certificaciones")
 
     if skills:
@@ -334,12 +296,10 @@ def render_skills(pdf, data):
         for item in additional:
             bullet(pdf, item, 8)
 
-
 def render_languages(pdf, data):
     languages = get_list(data, "languages")
     if not languages:
         return
-
     section_title(pdf, "Idiomas")
     parts = []
     for lang in languages:
@@ -354,7 +314,6 @@ def render_languages(pdf, data):
     if parts:
         normal_text(pdf, " • ".join(parts), 8.2)
 
-
 def build_pdf(data, font_size=9.2):
     pdf = SpanishCV(font_size=font_size)
     render_header(pdf, data)
@@ -368,14 +327,11 @@ def build_pdf(data, font_size=9.2):
     pdf.set_font(pdf.font_regular, "", 6.5)
     pdf.set_text_color(150, 150, 150)
     pdf.cell(0, 3, "CVSpin España", align="C")
-
     return bytes(pdf.output())
-
 
 def generate_fitted_pdf(data):
     sizes = [9.2, 8.9, 8.6, 8.3, 8.0]
     last_pdf = None
-
     for size in sizes:
         pdf_bytes = build_pdf(data, font_size=size)
         try:
@@ -385,14 +341,11 @@ def generate_fitted_pdf(data):
         except Exception:
             pass
         last_pdf = pdf_bytes
-
     return last_pdf
 
-
 # =========================================================
-# APP & INTERFACE
+# APPLICATION FLOW
 # =========================================================
-
 def prepare_manual_input(full_name, job_title, experience, education, skills):
     return f"Name:\n{full_name}\nTarget Job:\n{job_title}\nExperience:\n{experience}\nEducation:\n{education}\nSkills:\n{skills}"
 
@@ -461,7 +414,7 @@ if option.startswith("1."):
                         mime="application/pdf"
                     )
                 except Exception as e:
-                    st.error(f"Ocurrió un error: {e}")
+                    st.error(f"Error: {e}")
 else:
     uploaded_file = st.file_uploader("Suba un archivo PDF o una imagen del CV", type=["pdf", "png", "jpg", "jpeg"])
     job_target_file = st.text_input("Puesto de Trabajo Objetivo en España (Opcional)")
@@ -500,7 +453,7 @@ else:
                         mime="application/pdf"
                     )
                 except Exception as e:
-                    st.error(f"Ocurrió un error al procesar el archivo: {e}")
+                    st.error(f"Error: {e}")
 
 st.markdown("---")
 st.caption("CVSpin España • CV formatting and optimization tool")
