@@ -1,6 +1,5 @@
 import streamlit as st
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 from PIL import Image
 import pypdf
 from fpdf import FPDF
@@ -33,32 +32,23 @@ def call_gemini(contents):
     if not api_key:
         raise RuntimeError("Missing GEMINI_API_KEY in Streamlit Secrets.")
 
-    client = genai.Client(api_key=api_key)
+    genai.configure(api_key=api_key)
     
-    # قائمة بجميع الموديلات المتاحة لتفادي أي خطأ 404
-    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
-    last_error = None
-
-    config = types.GenerateContentConfig(
+    # استخدام الموديل المستقر المعتمد
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    
+    generation_config = genai.types.GenerationConfig(
         response_mime_type="application/json"
     )
 
-    for model_name in models_to_try:
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=contents,
-                config=config
-            )
-            if response and response.text:
-                return response
-        except Exception as e:
-            last_error = e
-            continue
-
-    if last_error:
-        raise last_error
-    raise RuntimeError("No Gemini model was available.")
+    response = model.generate_content(
+        contents,
+        generation_config=generation_config
+    )
+    
+    if response and response.text:
+        return response
+    raise RuntimeError("Empty response from Gemini API.")
 
 # =========================================================
 # PROMPT DEFINITION
@@ -430,11 +420,13 @@ else:
 
                     if uploaded_file.type == "application/pdf":
                         pdf_bytes = uploaded_file.getvalue()
-                        pdf_part = types.Part.from_bytes(
-                            data=pdf_bytes,
-                            mime_type="application/pdf"
-                        )
-                        response = call_gemini([pdf_part, prompt_base])
+                        reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+                        pdf_text = ""
+                        for page in reader.pages:
+                            pdf_text += page.extract_text() or ""
+                        
+                        contents = [prompt_base, pdf_text]
+                        response = call_gemini(contents)
                     else:
                         image = Image.open(uploaded_file)
                         response = call_gemini([image, prompt_base])
