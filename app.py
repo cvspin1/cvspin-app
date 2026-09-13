@@ -1,11 +1,12 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 from PIL import Image
 import pypdf
 from fpdf import FPDF
 import json
 import re
 import io
+import base64
 
 # =========================================================
 # PAGE CONFIG & UI
@@ -24,41 +25,52 @@ st.title("CVSpin España 🇪🇸")
 st.caption("Generador profesional de CV para el mercado español")
 
 # =========================================================
-# API & GEMINI CALL HANDLER
+# API & GEMINI CALL HANDLER (Interactions API)
 # =========================================================
+# NOTE: Google retired the old `generateContent` REST method / GenerativeModel
+# class for new usage in favor of the Interactions API, served by the
+# `google-genai` package (imported as `from google import genai`).
+# Make sure your requirements.txt has `google-genai` instead of
+# `google-generativeai`.
 api_key = st.secrets.get("GEMINI_API_KEY")
 
-def call_gemini(contents):
+# Primary + fallback model, in case Google rotates model names again.
+PRIMARY_MODEL = "gemini-3.6-flash"
+FALLBACK_MODEL = "gemini-3.5-flash"
+
+def _run_interaction(client, model, text_prompt, image_bytes=None, image_mime=None):
+    if image_bytes:
+        input_payload = [
+            {"type": "text", "text": text_prompt},
+            {
+                "type": "image",
+                "data": base64.b64encode(image_bytes).decode("utf-8"),
+                "mime_type": image_mime or "image/jpeg",
+            },
+        ]
+    else:
+        input_payload = text_prompt
+
+    return client.interactions.create(
+        model=model,
+        input=input_payload,
+        generation_config={"response_mime_type": "application/json"},
+    )
+
+def call_gemini(text_prompt, image_bytes=None, image_mime=None):
     if not api_key:
         raise RuntimeError("Missing GEMINI_API_KEY in Streamlit Secrets.")
 
-    genai.configure(api_key=api_key)
-
-    # gemini-1.5-flash was retired by Google -> use the current flash alias.
-    # "gemini-flash-latest" always points to Google's current recommended flash model.
-    # If you prefer a fixed/pinned version instead, use "gemini-2.5-flash".
-    model = genai.GenerativeModel("gemini-flash-latest")
-
-    generation_config = genai.types.GenerationConfig(
-        response_mime_type="application/json"
-    )
+    client = genai.Client(api_key=api_key)
 
     try:
-        response = model.generate_content(
-            contents,
-            generation_config=generation_config
-        )
-    except Exception as e:
-        # If the primary model name ever 404s again (Google rotates aliases),
-        # fall back to a pinned stable version automatically.
-        fallback_model = genai.GenerativeModel("gemini-2.5-flash")
-        response = fallback_model.generate_content(
-            contents,
-            generation_config=generation_config
-        )
+        interaction = _run_interaction(client, PRIMARY_MODEL, text_prompt, image_bytes, image_mime)
+    except Exception:
+        # Fall back to a pinned stable model if the primary alias 404s.
+        interaction = _run_interaction(client, FALLBACK_MODEL, text_prompt, image_bytes, image_mime)
 
-    if response and response.text:
-        return response
+    if interaction and interaction.output_text:
+        return interaction.output_text
     raise RuntimeError("Empty response from Gemini API.")
 
 # =========================================================
@@ -402,8 +414,8 @@ if option.startswith("1."):
                     user_input = prepare_manual_input(full_name, job_title, experience, education, skills)
                     prompt = STRICT_SPANISH_CV_PROMPT + "\n\n" + user_input
 
-                    response = call_gemini(prompt)
-                    cv_data = extract_json(response.text)
+                    output_text = call_gemini(prompt)
+                    cv_data = extract_json(output_text)
                     pdf_bytes = generate_fitted_pdf(cv_data)
 
                     st.success("CV generado correctamente.")
@@ -436,13 +448,17 @@ else:
                         for page in reader.pages:
                             pdf_text += page.extract_text() or ""
 
-                        contents = [prompt_base, pdf_text]
-                        response = call_gemini(contents)
+                        full_prompt = prompt_base + "\n\nCV TEXT:\n" + pdf_text
+                        output_text = call_gemini(full_prompt)
                     else:
-                        image = Image.open(uploaded_file)
-                        response = call_gemini([image, prompt_base])
+                        image_bytes = uploaded_file.getvalue()
+                        output_text = call_gemini(
+                            prompt_base,
+                            image_bytes=image_bytes,
+                            image_mime=uploaded_file.type,
+                        )
 
-                    cv_data = extract_json(response.text)
+                    cv_data = extract_json(output_text)
                     pdf_bytes = generate_fitted_pdf(cv_data)
 
                     st.success("CV optimizado correctamente.")
