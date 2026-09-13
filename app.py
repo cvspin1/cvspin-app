@@ -33,19 +33,30 @@ def call_gemini(contents):
         raise RuntimeError("Missing GEMINI_API_KEY in Streamlit Secrets.")
 
     genai.configure(api_key=api_key)
-    
-    # استخدام الموديل المستقر المعتمد
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    
+
+    # gemini-1.5-flash was retired by Google -> use the current flash alias.
+    # "gemini-flash-latest" always points to Google's current recommended flash model.
+    # If you prefer a fixed/pinned version instead, use "gemini-2.5-flash".
+    model = genai.GenerativeModel("gemini-flash-latest")
+
     generation_config = genai.types.GenerationConfig(
         response_mime_type="application/json"
     )
 
-    response = model.generate_content(
-        contents,
-        generation_config=generation_config
-    )
-    
+    try:
+        response = model.generate_content(
+            contents,
+            generation_config=generation_config
+        )
+    except Exception as e:
+        # If the primary model name ever 404s again (Google rotates aliases),
+        # fall back to a pinned stable version automatically.
+        fallback_model = genai.GenerativeModel("gemini-2.5-flash")
+        response = fallback_model.generate_content(
+            contents,
+            generation_config=generation_config
+        )
+
     if response and response.text:
         return response
     raise RuntimeError("Empty response from Gemini API.")
@@ -110,7 +121,7 @@ Return JSON adhering exactly to this structure:
 def extract_json(text):
     if not text:
         raise ValueError("Gemini returned an empty response.")
-    
+
     text = text.strip()
     text = re.sub(r"^```json\s*", "", text, flags=re.IGNORECASE)
     text = re.sub(r"^```\s*", "", text)
@@ -390,7 +401,7 @@ if option.startswith("1."):
                 try:
                     user_input = prepare_manual_input(full_name, job_title, experience, education, skills)
                     prompt = STRICT_SPANISH_CV_PROMPT + "\n\n" + user_input
-                    
+
                     response = call_gemini(prompt)
                     cv_data = extract_json(response.text)
                     pdf_bytes = generate_fitted_pdf(cv_data)
@@ -424,7 +435,7 @@ else:
                         pdf_text = ""
                         for page in reader.pages:
                             pdf_text += page.extract_text() or ""
-                        
+
                         contents = [prompt_base, pdf_text]
                         response = call_gemini(contents)
                     else:
