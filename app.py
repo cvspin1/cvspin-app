@@ -26,21 +26,39 @@ def clean_text_for_pdf(text):
     text = text.replace('?', '-').replace('"', '').replace('•', '-')
     return text.strip()
 
-def generate_pdf_one_page(text_content):
+def _render_cv_pdf(text_content, scale=1.0):
+    """
+    Renders the CV at a given spacing scale. scale=1.0 uses the original
+    compact spacing (used to measure how tall the content naturally is).
+    A scale > 1.0 stretches line heights and section gaps proportionally
+    so the same content fills more vertical space, without touching any
+    of the text itself.
+    """
     pdf = FPDF()
     pdf.add_page()
-    
+
     # Perfect margins to guarantee 1 full A4 page without crashing
     pdf.set_margins(12, 10, 12)
     pdf.set_auto_page_break(auto=False)
-    
+
+    # Base spacing values (same as the original design), scaled uniformly.
+    line_h_header = 4.5 * scale
+    line_h_bullet = 4.0 * scale
+    line_h_normal = 4.2 * scale
+
+    gap_section_before = 2.2 * scale
+    gap_section_after = 0.5 * scale
+    gap_bullet_after = 0.3 * scale
+    gap_normal_after = 0.4 * scale
+    gap_blank_line = 1.5 * scale
+
     lines = text_content.split('\n')
     for line in lines:
         clean_line = clean_text_for_pdf(line)
         if not clean_line:
-            pdf.ln(1.5)
+            pdf.ln(gap_blank_line)
             continue
-            
+
         try:
             safe_text = clean_line.encode('latin-1', 'replace').decode('latin-1')
         except Exception:
@@ -48,22 +66,48 @@ def generate_pdf_one_page(text_content):
 
         # Section Titles / Headers
         if line.strip().startswith('#') or (clean_line.isupper() and len(clean_line) < 40):
-            pdf.ln(2.2)
+            pdf.ln(gap_section_before)
             pdf.set_font("Arial", 'B', size=10)
-            pdf.multi_cell(0, 4.5, safe_text)
-            pdf.ln(0.5)
+            pdf.multi_cell(0, line_h_header, safe_text)
+            pdf.ln(gap_section_after)
         # Bullet points
         elif clean_line.startswith('*') or clean_line.startswith('-'):
             pdf.set_font("Arial", size=8.5)
-            pdf.multi_cell(0, 4.0, "  " + safe_text)
-            pdf.ln(0.3)
+            pdf.multi_cell(0, line_h_bullet, "  " + safe_text)
+            pdf.ln(gap_bullet_after)
         # Main text / Subheaders
         else:
             pdf.set_font("Arial", size=9)
-            pdf.multi_cell(0, 4.2, safe_text)
-            pdf.ln(0.4)
-            
-    return bytes(pdf.output())
+            pdf.multi_cell(0, line_h_normal, safe_text)
+            pdf.ln(gap_normal_after)
+
+    return pdf
+
+def generate_pdf_one_page(text_content):
+    """
+    Two-pass render: first measure how tall the content is at the original
+    compact spacing, then compute a scale factor that stretches spacing
+    (line height + section/paragraph gaps) so the content naturally fills
+    the whole A4 page instead of leaving blank space at the bottom.
+    The text content itself is never modified.
+    """
+    # Pass 1: measure natural height at base (compact) spacing.
+    measurement_pdf = _render_cv_pdf(text_content, scale=1.0)
+    content_height = measurement_pdf.get_y() - measurement_pdf.t_margin
+    usable_page_height = measurement_pdf.h - measurement_pdf.t_margin - measurement_pdf.b_margin
+
+    if content_height > 0:
+        scale = usable_page_height / content_height
+    else:
+        scale = 1.0
+
+    # Never shrink below the original design, and cap how much we stretch
+    # so very short CVs don't end up with absurdly wide line spacing.
+    scale = max(1.0, min(scale, 1.8))
+
+    # Pass 2: render for real using the computed scale.
+    final_pdf = _render_cv_pdf(text_content, scale=scale)
+    return bytes(final_pdf.output())
 
 def call_gemini_auto(client, contents):
     available_models = []
@@ -208,4 +252,3 @@ Target Job Title in Spain: {job_target_file if job_target_file else 'Mismo puest
                         )
                     except Exception as e:
                         st.error(f"Ocurrió un error al procesar el archivo: {e}")
-                      
