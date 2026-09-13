@@ -1,5 +1,6 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from PIL import Image
 import pypdf
 from fpdf import FPDF
@@ -39,25 +40,28 @@ api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
     st.error("⚠️ La API Key no está configurada. Añade GEMINI_API_KEY en Streamlit Secrets.")
-else:
-    genai.configure(api_key=api_key)
 
 def call_gemini(contents):
-    # Models n3mlo fihom l-versions l-khaddamin db
-    models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro"]
+    if not api_key:
+        raise RuntimeError("Missing GEMINI_API_KEY")
+
+    client = genai.Client(api_key=api_key)
+    
+    # قائمة النماذج الرسمية المتوفرة
+    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash"]
     last_error = None
 
-    generation_config = {
-        "response_mime_type": "application/json"
-    }
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json"
+    )
 
     for model_name in models_to_try:
         try:
-            model = genai.GenerativeModel(
-                model_name=model_name,
-                generation_config=generation_config
+            response = client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=config
             )
-            response = model.generate_content(contents)
             if response and response.text:
                 return response
         except Exception as e:
@@ -468,21 +472,12 @@ else:
                     prompt_base = f"{STRICT_SPANISH_CV_PROMPT}\n\nTARGET JOB IN SPAIN:\n{target}"
 
                     if uploaded_file.type == "application/pdf":
-                        # Extracción de texto con PyPDF
-                        pdf_reader = pypdf.PdfReader(uploaded_file)
-                        pdf_text = "".join([page.extract_text() or "" for page in pdf_reader.pages])
-                        
-                        if pdf_text.strip():
-                            full_prompt = f"{prompt_base}\n\nORIGINAL CV CONTENT:\n{pdf_text}"
-                            response = call_gemini(full_prompt)
-                        else:
-                            # Si es PDF escaneado (sin texto)
-                            pdf_bytes = uploaded_file.getvalue()
-                            pdf_part = {
-                                "mime_type": "application/pdf",
-                                "data": pdf_bytes
-                            }
-                            response = call_gemini([pdf_part, prompt_base])
+                        pdf_bytes = uploaded_file.getvalue()
+                        pdf_part = types.Part.from_bytes(
+                            data=pdf_bytes,
+                            mime_type="application/pdf"
+                        )
+                        response = call_gemini([pdf_part, prompt_base])
                     else:
                         image = Image.open(uploaded_file)
                         response = call_gemini([image, prompt_base])
