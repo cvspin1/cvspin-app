@@ -47,8 +47,12 @@ def call_gemini(contents):
 
     client = genai.Client(api_key=api_key)
     
-    # قائمة النماذج الرسمية المتوفرة
-    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash"]
+    # أسماء الموديلات الرسمية المتاحة حالياً لتفادي خطأ 404
+    models_to_try = [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-1.5-flash"
+    ]
     last_error = None
 
     config = types.GenerateContentConfig(
